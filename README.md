@@ -8,5 +8,7 @@ windows
 
 🔗 **pip install wget**
 
+🔗 ## [chromedriver.exe](https://chromedriver.chromium.org/downloads)
+
 ## Usage
 
