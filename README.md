@@ -5,7 +5,9 @@
 
 ## intall
 windows
+
 🔗 **pip install selenium**
+
 🔗 **pip install wget**
 
 ## Usage
