@@ -3,6 +3,7 @@ from selenium import webdriver
 #應用 selenium Keys
 #from selenium.webdriver.common.keys import Keys
 #應用 selenium By
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -14,8 +15,8 @@ import wget
 #設定關鍵字
 keyword = "#game"
 #開啟 chromedriver
-PATH = "C:/Users/BOB/Desktop/pytjon爬蟲/chromedriver.exe"
-driver = webdriver.Chrome(PATH)
+s = Service(r"C:/Users/BOB/Desktop/pytjon爬蟲/chromedriver.exe")
+driver = webdriver.Chrome(service = s)
 #開啟網址
 driver.get("https://www.instagram.com/")
 time.sleep(1)
