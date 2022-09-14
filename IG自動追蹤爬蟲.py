@@ -1,4 +1,5 @@
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -8,8 +9,8 @@ import random
 user = ""
 passwords= ""
 #開啟 chromedriver
-PATH = "C:/Users/BOB/Desktop/pytjon爬蟲/chromedriver.exe"
-driver = webdriver.Chrome(PATH)
+s = Service(r"C:/Users/BOB/Desktop/pytjon爬蟲/chromedriver.exe")
+driver = webdriver.Chrome(service = s)
 #開啟網址
 driver.get("https://www.instagram.com/")
 time.sleep(1)
