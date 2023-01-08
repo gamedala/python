@@ -10,7 +10,7 @@ from selenium.webdriver.support import expected_conditions as EC
 #調用 time
 import time
 #開啟 chromedriver
-s = Service(r"C:/Users/BOB/Desktop/pytjon爬蟲/chromedriver.exe")
+s = Service(r"C:/Users/BOB/Desktop/python/chromedriver.exe")
 driver = webdriver.Chrome(service = s)
 #開啟網址
 driver.get("https://www.facebook.com/")

@@ -6,11 +6,11 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 import time
 import random
-user = ""
-passwords= ""
+user = "gamedola3"
+passwords= "Tdemcodie2"
 #開啟 chromedriver
-s = Service(r"C:/Users/BOB/Desktop/pytjon爬蟲/chromedriver.exe")
-driver = webdriver.Chrome(service = s)
+PATH = Service(r"C:/Users/BOB/Desktop/python/chromedriver.exe")
+driver = webdriver.Chrome(service = PATH)
 #開啟網址
 driver.get("https://www.instagram.com/")
 time.sleep(1)
@@ -21,7 +21,7 @@ username = WebDriverWait(driver, 10).until(
 password = WebDriverWait(driver, 10).until(
     EC.presence_of_element_located((By.NAME, "password"))
 )
-login = driver.find_element(By.XPATH, '/html/body/div[1]/section/main/article/div[2]/div[1]/div[2]/form/div/div[3]/button')
+login = driver.find_element(By.XPATH, '/html/body/div[2]/div/div/div/div[1]/div/div/div/div[1]/section/main/article/div[2]/div[1]/div[2]/form/div/div[3]/button/div')
 #清除
 username.clear()
 password.clear()

@@ -1,42 +1,39 @@
 #調用 selenium webdriver
 from selenium import webdriver
-#應用 selenium Keys
-#from selenium.webdriver.common.keys import Keys
-#應用 selenium By
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 #調用 time
-import time
-import os
-import wget
+import time,os,wget
+user = "gamedola3"
+passwords= "Tdemcodie2"
 #設定關鍵字
 keyword = "#game"
 #開啟 chromedriver
-s = Service(r"C:/Users/BOB/Desktop/pytjon爬蟲/chromedriver.exe")
-driver = webdriver.Chrome(service = s)
+PATH = Service(r"C:/Users/BOB/Desktop/python/chromedriver.exe")
+driver = webdriver.Chrome(service = PATH)
 #開啟網址
 driver.get("https://www.instagram.com/")
-time.sleep(1)
 #取得登入
+#尋找 持續 10秒直到找到元素
 username = WebDriverWait(driver, 10).until(
     EC.presence_of_element_located((By.NAME, "username"))
 )
 password = WebDriverWait(driver, 10).until(
     EC.presence_of_element_located((By.NAME, "password"))
 )
-login = driver.find_element(By.XPATH, '/html/body/div[1]/section/main/article/div[2]/div[1]/div[2]/form/div/div[3]/button')
+login = driver.find_element(By.XPATH, '/html/body/div[2]/div/div/div/div[1]/div/div/div/div[1]/section/main/article/div[2]/div[1]/div[2]/form/div/div[3]/button/div')
 #清除
 username.clear()
 password.clear()
 #輸入帳號密碼
-username.send_keys("")
-password.send_keys("")
+username.send_keys(user)
+password.send_keys(passwords)
 #點擊登入
 login.click()
-time.sleep(3)
+time.sleep(5)
 #轉跳頁面
 driver.get("https://www.instagram.com/explore/")
 time.sleep(3)
@@ -45,7 +42,7 @@ search = WebDriverWait(driver, 10).until(
     EC.presence_of_element_located((By.XPATH, "/html/body/div[1]/div/div/div/div[1]/div/div/div/div[1]/div[1]/div[2]/section/main/div/div[1]/input"))
 )
 #輸入搜尋關鍵字
-search.send_keys("#game")
+search.send_keys(keyword)
 time.sleep(1)
 search.send_keys(Keys.RETURN)
 time.sleep(1)
