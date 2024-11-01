@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>物品展示與篩選</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; }
+        
+        .fixed-container {
+            position: fixed; /* 固定在頁面頂部 */
+            top: 0;
+            left: 0;
+            right: 0;
+            padding: 20px; /* 內邊距 */
+			background-color: #DAF7A6; /* 背景顏色 */
+            z-index: 1000; /* 確保在其他內容之上 */
+        }
+        
+        .item { border: 1px solid #ccc; padding: 10px; margin: 10px 0; background-color: #FFFFCE; /* 背景顏色 */}
+        .item-name { color: #4CAF50; font-weight: bold; }
+        .item-suffix { color: #ff9100; }
+        .item-description { }
+        .item-ss { color: #0080FF; }
+        .tooltip {
+            position: relative;
+            display: inline-block;
+            cursor: pointer;
+        }
+
+        .tooltip .tooltiptext {
+            visibility: hidden;
+            width: max-content;
+            max-height: 300px; /* 增加最大高度 */
+            background-color: #555;
+            color: #fff;
+            text-align: left;
+            border-radius: 5px;
+            padding: 5px;
+            position: absolute;
+            z-index: 9999;
+            bottom: 100%; /* Tooltip 顯示在上方 */
+            left: 50%;
+            transform: translateX(-50%);
+            white-space: pre-wrap; /* 保留換行符 */
+            line-height: 1.5;
+        }
+
+        .tooltip:hover .tooltiptext {
+            visibility: visible;
+        }
+
+        /* Tooltip 箭頭 */
+        .tooltip .tooltiptext::after {
+            content: "";
+            position: absolute;
+            top: 100%; /* 箭頭在提示框的下方 */
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #555 transparent transparent transparent;
+        }
+
+        #itemsContainer {
+            margin-top: 250px; /* 為固定的容器留出空間 */
+        }
+		
+        .highlight {
+            background-color: #5eff00; /* 高亮顏色 */
+        }
+
+        #notification {
+            display: none;
+            position: fixed;
+            top: 50px; /* 垂直居中 */
+            left: 50%; /* 水平居中 */
+            transform: translateX(-50%); /* 水平居中 */
+            background-color: #4CAF50; /* 綠色 */
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            z-index: 1000;
+            text-align: center; /* 使文本居中 */
+            width: 300px; /* 设置固定宽度以便居中显示 */
+        }
+        
+    </style>
+</head>
+<body>
+    <div class="fixed-container">
+        <div class="filter">
+            <label for="typeFilter">類型篩選：</label>
+            <select id="typeFilter">
+                <option value="">全部</option>
+                <option value="武器">武器</option>
+                <option value="防具">防具</option>
+            </select>
+            <br><label for="Storage">倉庫類別篩選：</label>
+            <select id="Storage">
+                <option value="">全部</option>
+                <option value="個人">個人</option>
+                <option value="個人倉庫">個人倉庫</option>
+                <option value="武器倉庫">武器倉庫</option>
+                <option value="防具倉庫">防具倉庫</option>
+                <option value="時裝倉庫">時裝倉庫</option>
+                <option value="卡片倉庫">卡片倉庫</option>
+                <option value="影裝倉庫">影裝倉庫</option>
+                <option value="Guild Storage">Guild Storage</option>
+            </select>
+			<br><button id="showDuplicatesButton">顯示重複的物品名稱及數量</button>
+        </div>
+        <div class="search">
+            <label for="searchInput">搜索物品(支持多關鍵字用+貼合)：</label>
+            <br><input type="text" id="searchInput" placeholder="輸入關鍵字..." style="width: 300px;">
+            <l1abel>
+                <input type="checkbox" id="toggleDescription"> 顯示/搜尋描述
+            </label>
+            <button id="searchButton">搜索</button>
+        </div>
+        <div class="enhance">
+            <label for="suffix_ID">詞綴篩選(雙擊顯示清單) ：</label>
+            <br><div style="position: relative; display: inline-block;">
+                <input type="text" id="suffix_ID" placeholder="輸入詞綴編號..." style="width: 200px;">
+                <div id="customDropdown" style="display: none; position: absolute; top: 35px; left: 0; width: 400px; max-height: 400px; overflow-y: auto; border: 1px solid #ddd; background-color: #fff; z-index: 1000;">
+                    <!-- 下拉選項將由 JavaScript 生成 -->
+                </div>
+            </div>
+            <br><label for="refineInput">All精煉篩選 (>=)：</label>
+            <input type="number" id="refineInput" placeholder="輸入精煉值...">
+            <label for="upgradeInput">All強化篩選 (>=)：</label>
+            <input type="number" id="upgradeInput" placeholder="輸入強化次數...">
+            <br><input type="file" id="fileInput" accept=".json">
+        </div>
+
+    </div>
+    
+    <div id="itemsContainer"></div>
+    <div id="notification"></div>
+    
+    <script>
+        const inputField = document.getElementById('suffix_ID');
+        const dropdown = document.getElementById('customDropdown');
+        // 過濾選項
+        inputField.addEventListener('input', () => {
+            const query = inputField.value.toLowerCase();
+            const filteredOptions = suffixOptions.filter(option => option.name.toLowerCase().includes(query) || option.id.includes(query));
+            populateDropdown(filteredOptions);
+        });
+
+        // 顯示通知
+        function showNotification(dynamicContent, bgColor) {
+            const notification = document.getElementById('notification');
+
+            // 如果通知已可见，先将其隐藏
+            if (notification.style.display === 'block') {
+                notification.style.display = 'none';
+            }
+
+            // 设置通知框内容和背景颜色
+            notification.innerHTML = dynamicContent; 
+            notification.style.backgroundColor = bgColor; 
+            notification.style.display = 'block'; // 显示通知
+
+            // 5秒后自动隐藏通知
+            setTimeout(() => {
+                notification.style.display = 'none'; // 隐藏通知
+            }, 5000);
+        }
+        let data = []; // 用於存儲加載的數據
+        document.getElementById('fileInput').addEventListener('change', function(event) {
+            data = [];
+            itemsContainer.innerHTML = '';  // 清空內容
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const content = e.target.result; // 獲取文件內容
+                    try {
+                        const parsedData = JSON.parse(content); // 解析 JSON
+                        data = flattenData(parsedData); // 将嵌套结构的数据展开成数组
+                        displayItems(data); // 顯示數據
+                        filterAndDisplayItems();
+                    } catch (error) {
+                        document.getElementById('itemsContainer').innerText = '文件不是有效的 JSON 格式。';
+                    }
+                };
+                reader.readAsText(file); // 讀取文件內容
+            }
+        });
+
+        // 遞歸函數展開多層嵌套的數據結構，並添加來源名稱
+        function flattenData(obj, parentKey = '') {
+            let result = [];
+            for (const key in obj) {
+                const currentKey = parentKey ? `${parentKey}.${key}` : key; // 當前字典的完整路徑名稱
+                if (Array.isArray(obj[key])) {
+                    // 對每個數組項添加來源信息
+                    const itemsWithSource = obj[key].map(item => ({
+                        ...item,
+                        source: currentKey // 添加來源名稱
+                    }));
+                    result = result.concat(itemsWithSource);
+                } else if (typeof obj[key] === 'object') {
+                    // 遞歸處理嵌套對像
+                    result = result.concat(flattenData(obj[key], currentKey));
+                }
+            }
+            return result;
+        }
+
+
+		// 監聽顯示重複物品按鈕點擊事件
+		document.getElementById('showDuplicatesButton').addEventListener('click', function () {
+			const duplicates = getDuplicateItemsById(data);
+			displayDuplicatesById(duplicates);
+		});
+
+		// 根據物品編號篩選重複的項目
+		function getDuplicateItemsById(items) {
+            const StorageType = document.getElementById('Storage').value;
+			const itemData = {};
+			// 以物品編號為基準，統計每個物品的出現次數和名稱
+			items.forEach(item => {
+                if (item.source == StorageType || StorageType=="")
+                    if (itemData[item.id]) {
+                        itemData[item.id].count++;
+                    } else {
+                            itemData[item.id] = { count: 1, name: item.name, source: item.source};
+                    }
+			});
+
+			// 篩選出出現次數大於1的物品編號及其名稱
+			return Object.entries(itemData).filter(([id, data]) => data.count > 1);
+		}
+
+		// 顯示重複的物品名稱、編號和重複數量
+        function displayDuplicatesById(duplicates) {
+            const itemsContainer = document.getElementById('itemsContainer');
+            itemsContainer.innerHTML = '';  // 清空內容
+
+            const duplicateWrapper = document.createElement('div');
+            duplicateWrapper.className = 'item';  // 外層容器，包裹所有重複項
+
+            duplicates.forEach(([id, data]) => {
+                const duplicateElement = document.createElement('div');
+                //duplicateElement.className = 'item';
+                duplicateElement.innerHTML = `
+                    <p>${data.source} <strong>重複數量:</strong> ${data.count} 
+                        <strong>編號:</strong> ${id} 
+                        <strong>名稱:</strong> ${data.name}</p>
+                `;
+                duplicateWrapper.appendChild(duplicateElement);  // 將每個項添加到外層容器中
+            });
+
+            itemsContainer.appendChild(duplicateWrapper);  // 將外層容器添加到頁面中
+        }
+
+        document.getElementById('toggleDescription').addEventListener('change', filterAndDisplayItems);
+        document.getElementById('typeFilter').addEventListener('change', filterAndDisplayItems);
+        document.getElementById('Storage').addEventListener('change', filterAndDisplayItems);
+        document.getElementById('searchButton').addEventListener('click', filterAndDisplayItems);
+        document.getElementById('refineInput').addEventListener('input', filterAndDisplayItems);
+        document.getElementById('upgradeInput').addEventListener('input', filterAndDisplayItems);
+        document.getElementById('suffix_ID').addEventListener('input', filterAndDisplayItems);
+
+        function filterAndDisplayItems() {
+            const selectedType = document.getElementById('typeFilter').value;
+            const StorageType = document.getElementById('Storage').value;
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const keywords = searchTerm.split(/\s+|\+/).filter(keyword => keyword); // 使用空格或+分割並過濾掉空字符串
+            const refineValue = parseInt(document.getElementById('refineInput').value, 10) || 0;
+            const minUpgrade = parseInt(document.getElementById('upgradeInput').value, 10) || 0;
+            const suffixID = document.getElementById('suffix_ID').value;
+            const suffixwords = suffixID.split(/\s+|\+/).filter(suffixword => suffixword); // 使用空格或+分割並過濾掉空字符串
+            const showDescription = document.getElementById('toggleDescription').checked;
+            let notificationMessage = '搜索條件';
+            if (suffixwords.length > 0)
+                notificationMessage += `<br>詞綴ID: ${suffixwords.join(', ')}`;
+            if (selectedType)
+                notificationMessage += `<br>類型: ${selectedType}`;
+            if (StorageType)
+                notificationMessage += `<br>存儲類型: ${StorageType}`;
+            if (keywords.length > 0)
+                notificationMessage += `<br>關鍵詞: ${keywords.join(', ')}`;
+            if (refineValue > 0)
+                notificationMessage += `<br>精煉值 >= ${refineValue}`;
+            if (minUpgrade > 0)
+                notificationMessage += `<br>強化次數 >= ${minUpgrade}`;
+            notificationMessage += `<br>顯示/搜尋描述: ${showDescription ? '是' : '否'}`;
+            showNotification(notificationMessage, '#4CAF50'); // 显示通知
+            const filteredData = data.filter(item => {
+                const matchesType = selectedType ? item.type === selectedType : true;
+                const matchesStorage = StorageType ? item.source === StorageType : true;
+
+                // 檢查 item 是否匹配所有關鍵字
+                const matchesSearch = keywords.length === 0 || keywords.some(keyword => 
+                    item.name.toLowerCase().includes(keyword) ||
+                    item.id.toString().includes(keyword) ||
+                    item.refine.toString().includes(keyword) ||
+                    (showDescription && item.description.toLowerCase().includes(keyword)) ||
+                    [item.s_name1, item.s_name2, item.s_name3, item.s_name4].some(s => s.toLowerCase().includes(keyword)) ||
+                    [item.suffix_name1, item.suffix_name2, item.suffix_name3, item.suffix_name4, item.suffix_name5].some(ss => ss && ss.toLowerCase().includes(keyword)) ||
+                    [item.suffix_veal11, item.suffix_veal12, item.suffix_veal13, item.suffix_veal14, item.suffix_veal15].some(sss => sss.toString().includes(keyword)) ||
+                    [item.suffix_veal21, item.suffix_veal22, item.suffix_veal23, item.suffix_veal24, item.suffix_veal25].some(ssss => ssss.toString().includes(keyword))
+                );
+
+                const matchesRefine = isNaN(refineValue) || item.refine >= refineValue;
+                const matchesUpgrade = isNaN(minUpgrade) ||
+                    [item.suffix_veal21, item.suffix_veal22, item.suffix_veal23, item.suffix_veal24].some(
+                        veal => veal >= minUpgrade
+                    );
+                
+                const matchSuffixID = suffixwords.length === 0 || suffixwords.some(suffixword =>
+                    [item.suffix_ID1, item.suffix_ID2, item.suffix_ID3, item.suffix_ID4].some(
+                        suffix => suffix && suffix.toString() === suffixword
+                    )
+                );
+
+                return matchesType && matchesStorage && matchesSearch && matchesRefine && matchesUpgrade && matchSuffixID;
+            });
+
+            displayItems(filteredData, searchTerm);
+        }
+
+
+        function displayItems(items, searchTerm) {
+            const itemsContainer = document.getElementById('itemsContainer');
+            itemsContainer.innerHTML = '';  // 清空內容
+
+            const showDescription = document.getElementById('toggleDescription').checked; // 獲取描述顯示狀態
+
+            items.forEach(item => {
+                const itemElement = document.createElement('div');
+                itemElement.className = 'item';
+            // 定義一個格式化 suffix 名稱的函數
+            function formatSuffixName(list, suffixName, suffixVeal1, suffixVeal2) {
+                let count = 0;
+                return suffixName
+                    ? (list > 1?", ":"")+ "[ "+suffixName.replace(/%d/g, () => {
+                        count++;
+                        return count === 1 ? suffixVeal1 || '' : suffixVeal2 || '';
+                    })+" ]"
+                    : '';
+            }
+
+            // 使用 formatSuffixName 函數來格式化 suffix 名稱
+            const formattedSuffixName1 = formatSuffixName(1, item.suffix_name1, item.suffix_veal11, item.suffix_veal21);
+            const formattedSuffixName2 = formatSuffixName(2, item.suffix_name2, item.suffix_veal12, item.suffix_veal22);
+            const formattedSuffixName3 = formatSuffixName(3, item.suffix_name3, item.suffix_veal13, item.suffix_veal23);
+            const formattedSuffixName4 = formatSuffixName(4, item.suffix_name4, item.suffix_veal14, item.suffix_veal24);
+            const formattedSuffixName5 = formatSuffixName(5, item.suffix_name5, item.suffix_veal15, item.suffix_veal25);
+
+            // 定義一個格式化洞的函數
+            function formatHole(holeNumber, holeName, holeScript) {
+                return holeName && holeScript
+                    ? `<b style="color: #000000;">洞${holeNumber}: </b><span style="color: #0080FF;" class="tooltip">${holeName}<span class="tooltiptext">${holeScript}</span></span>`
+                    : '';
+            }
+
+            // 使用 formatHole 函數來格式化洞信息
+            const formattedHole1 = formatHole(1, item.s_name1, item.s_scripts1);
+            const formattedHole2 = formatHole(2, item.s_name2, item.s_scripts2);
+            const formattedHole3 = formatHole(3, item.s_name3, item.s_scripts3);
+            const formattedHole4 = formatHole(4, item.s_name4, item.s_scripts4);
+                itemElement.innerHTML = `
+                    <p><strong>${item.source}排序: ${item.list_id} 編號: ${highlightText(item.id.toString(), searchTerm)}</strong> +<strong>${item.refine}</strong> <strong>${highlightText(item.name, searchTerm)} (類型: ${item.type})　
+                    ${highlightText(formattedHole1, searchTerm)} ${highlightText(formattedHole2, searchTerm)} ${highlightText(formattedHole3, searchTerm)} ${highlightText(formattedHole4, searchTerm)} </strong></p>
+                    <span class="item-suffix"><strong>${highlightText(formattedSuffixName1, searchTerm)} ${highlightText(formattedSuffixName2, searchTerm)} ${highlightText(formattedSuffixName3, searchTerm)} ${highlightText(formattedSuffixName4, searchTerm)} ${highlightText(formattedSuffixName5, searchTerm)}</span>
+
+                    ${showDescription ? `<p><strong>描述:<br></strong> ${highlightText(item.description, searchTerm)}</p>` : ''}
+                    
+                `;
+                itemsContainer.appendChild(itemElement);
+            });
+        }
+				
+		function escapeRegExp(string) {
+			return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+		}
+
+        function highlightText(text, searchTerm) {
+            if (!searchTerm) return text; // 如果沒有搜索詞，直接返回原始文本
+
+            const keywords = searchTerm.split(/\s+|\+/).filter(keyword => keyword); // 使用空格或 + 分割並過濾掉空字符串
+
+            // 創建正則表達式並逐個替換
+            keywords.forEach(keyword => {
+                const escapedKeyword = escapeRegExp(keyword); // 轉義特殊字符
+                const regex = new RegExp(`(${escapedKeyword})`, 'gi');
+                text = text.replace(regex, '<span class="highlight">$1</span>');
+            });
+
+            return text;
+        }
+        
+        let selectedOptions = [];
+
+        // 當輸入框獲得焦點時顯示選項
+        inputField.addEventListener('dblclick', () => {
+            dropdown.style.display = 'block';
+            populateDropdown(suffixOptions);
+        });
+
+        // 當輸入框失去焦點時延遲隱藏選項
+        document.addEventListener('click', (event) => {
+            if (!dropdown.contains(event.target) && event.target !== inputField) {
+                dropdown.style.display = 'none'; // 隱藏下拉菜單
+            }
+        });
+
+        // 生成自定義選項列表
+        function populateDropdown(options) {
+            dropdown.innerHTML = '';
+            options.forEach(option => {
+                const div = document.createElement('div');
+                div.style.display = 'flex';
+                div.style.justifyContent = 'space-between';
+                div.style.padding = '8px';
+                div.style.cursor = 'pointer';
+                div.innerHTML = `<span>${option.id} - ${option.name}</span>`;
+                
+                // 點擊選項將其添加到輸入框值中
+                div.onclick = () => {
+                    const currentValue = inputField.value;
+                    const newValue = option.id;
+                    if (!currentValue.includes(newValue)) {
+                        inputField.value = currentValue ? `${currentValue}+${newValue}` : newValue;
+                        filterAndDisplayItems(); // 進行篩選和展示
+                    }
+                    dropdown.style.display = 'none';
+                };
+
+                div.onmouseover = () => div.style.backgroundColor = '#f0f0f0';
+                div.onmouseout = () => div.style.backgroundColor = '#fff';
+
+                dropdown.appendChild(div);
+            });
+        }
+        //選像清單
+        const suffixOptions = [
+            { id: "1", name: "MHP + x" },
+            { id: "2", name: "MSP + x" },
+            { id: "3", name: "STR + x" },
+            { id: "4", name: "AGI + x" },
+            { id: "5", name: "VIT + x" },
+            { id: "6", name: "INT + x" },
+            { id: "7", name: "DEX + x" },
+            { id: "8", name: "LUK + x" },
+            { id: "9", name: "MHP + x%" },
+            { id: "10", name: "MSP + x%" },
+            { id: "11", name: "HP 恢復速度增加 x% " },
+            { id: "12", name: "SP 恢復速度增加 x% " },
+            { id: "13", name: "ATK + x%" },
+            { id: "14", name: "MATK + x%" },
+            { id: "15", name: "ASPD + x" },
+            { id: "16", name: "攻擊速度增加(減少攻擊後延遲 x%)" },
+            { id: "17", name: "ATK + x" },
+            { id: "18", name: "HIT + x" },
+            { id: "19", name: "MATK + x" },
+            { id: "20", name: "DEF + x" },
+            { id: "21", name: "MDEF + x" },
+            { id: "22", name: "FLEE + x" },
+            { id: "23", name: "完全迴避 + x" },
+            { id: "24", name: "CRI + x" },
+            { id: "25", name: "對無屬性攻擊的抗性增加 x% " },
+            { id: "26", name: "對水屬性攻擊的抗性增加 x% " },
+            { id: "27", name: "對地屬性攻擊的抗性增加 x% " },
+            { id: "28", name: "對火屬性攻擊的抗性增加 x% " },
+            { id: "29", name: "對風屬性攻擊的抗性增加 x% " },
+            { id: "30", name: "對毒屬性攻擊的抗性增加 x% " },
+            { id: "31", name: "對聖屬性攻擊的抗性增加 x% " },
+            { id: "32", name: "對暗屬性攻擊的抗性增加 x% " },
+            { id: "33", name: "對念屬性攻擊的抗性增加 x% " },
+            { id: "34", name: "對不死屬性攻擊的抗性增加 x% " },
+            { id: "35", name: "對所有屬性(無屬性除外)攻擊的抗性增加 x%" },
+            { id: "36", name: "被無屬性魔物受到物傷減少 x% " },
+            { id: "37", name: "給予無屬性怪的物傷增加 x% " },
+            { id: "38", name: "被水屬性魔物受到物傷減少 x% " },
+            { id: "39", name: "給予水屬性怪的物傷增加 x% " },
+            { id: "40", name: "被地屬性魔物受到物傷減少 x% " },
+            { id: "41", name: "給予地屬性怪的物傷增加 x% " },
+            { id: "42", name: "被火屬性魔物受到物傷減少 x% " },
+            { id: "43", name: "給予火屬性怪的物傷增加 x% " },
+            { id: "44", name: "被風屬性魔物受到物傷減少 x% " },
+            { id: "45", name: "給予風屬性怪的物傷增加 x% " },
+            { id: "46", name: "被毒屬性魔物受到物傷減少 x% " },
+            { id: "47", name: "給予毒屬性怪的物傷增加 x% " },
+            { id: "48", name: "被聖屬性魔物受到物傷減少 x% " },
+            { id: "49", name: "給予聖屬性怪的物傷增加 x% " },
+            { id: "50", name: "被暗屬性魔物受到物傷減少 x% " },
+            { id: "51", name: "給予暗屬性怪的物傷增加 x% " },
+            { id: "52", name: "被念屬性魔物受到物傷減少 x% " },
+            { id: "53", name: "給予念屬性怪的物傷增加 x% " },
+            { id: "54", name: "被不死屬性魔物受到物傷減少 x% " },
+            { id: "55", name: "給予不死屬性怪的物傷增加 x% " },
+            { id: "56", name: "被無屬性魔物受到魔傷減少 x% " },
+            { id: "57", name: "給予無屬性怪的魔傷增加 x% " },
+            { id: "58", name: "被水屬性魔物受到魔傷減少 x% " },
+            { id: "59", name: "給予水屬性怪的魔傷增加 x% " },
+            { id: "60", name: "被地屬性魔物受到魔傷減少 x% " },
+            { id: "61", name: "給予地屬性怪的魔傷增加 x% " },
+            { id: "62", name: "被火屬性魔物受到魔傷減少 x% " },
+            { id: "63", name: "給予火屬性怪的魔傷增加 x% " },
+            { id: "64", name: "被風屬性魔物受到魔傷減少 x% " },
+            { id: "65", name: "給予風屬性怪的魔傷增加 x% " },
+            { id: "66", name: "被毒屬性魔物受到魔傷減少 x% " },
+            { id: "67", name: "給予毒屬性怪的魔傷增加 x% " },
+            { id: "68", name: "被聖屬性魔物受到魔傷減少 x% " },
+            { id: "69", name: "給予聖屬性怪的魔傷增加 x% " },
+            { id: "70", name: "被暗屬性魔物受到魔傷減少 x% " },
+            { id: "71", name: "給予暗屬性怪的魔傷增加 x% " },
+            { id: "72", name: "被念屬性魔物受到魔傷減少 x% " },
+            { id: "73", name: "給予念屬性怪的魔傷增加 x% " },
+            { id: "74", name: "被不死屬性魔物受到魔傷減少 x% " },
+            { id: "75", name: "給予不死屬性怪的魔傷增加 x% " },
+            { id: "76", name: "在鎧甲上永久賦予無屬性" },
+            { id: "77", name: "在鎧甲本身永遠賦予水屬性" },
+            { id: "78", name: "在鎧甲本身永遠賦予地屬性" },
+            { id: "79", name: "在鎧甲本身永遠賦予火屬性" },
+            { id: "80", name: "在鎧甲本身永遠賦予風屬性" },
+            { id: "81", name: "在鎧甲本身永遠賦予毒屬性" },
+            { id: "82", name: "在鎧甲本身永遠賦予聖屬性" },
+            { id: "83", name: "在鎧甲本身永遠賦予暗屬性" },
+            { id: "84", name: "在鎧甲本身永遠賦予念屬性" },
+            { id: "85", name: "在鎧甲本身永遠賦予不死屬性" },
+            { id: "87", name: "對無型系魔物的抗性增加 x% " },
+            { id: "88", name: "對不死系魔物的抗性增加 x%" },
+            { id: "89", name: "對動物系魔物的抗性增加 x%" },
+            { id: "90", name: "對植物系魔物的抗性增加 x%" },
+            { id: "91", name: "對昆蟲系魔物的抗性增加 x%" },
+            { id: "92", name: "對魚貝系魔物的抗性增加 x%" },
+            { id: "93", name: "對惡魔系魔物的抗性增加 x%" },
+            { id: "94", name: "對人類系魔物(非PC)的抗性增加 x%" },
+            { id: "95", name: "對天使系魔物的抗性增加 x%" },
+            { id: "96", name: "對龍族系魔物的抗性增加 x%" },
+            { id: "97", name: "對無型系魔物的物傷增加  x% " },
+            { id: "98", name: "對不死系魔物的物傷增加  x%" },
+            { id: "99", name: "對動物系魔物的物傷增加  x%" },
+            { id: "100", name: "對植物系魔物的物傷增加  x%" },
+            { id: "101", name: "對昆蟲系魔物的物傷增加  x%" },
+            { id: "102", name: "對魚貝系魔物的物傷增加  x%" },
+            { id: "103", name: "對惡魔系魔物的物傷增加  x%" },
+            { id: "104", name: "對人類型魔物(非PC)的物傷增加  x%" },
+            { id: "105", name: "對天使系魔物的物傷增加  x%" },
+            { id: "106", name: "對龍族系魔物的物傷增加  x%" },
+            { id: "107", name: "對無型系魔物的魔傷增加 x% " },
+            { id: "108", name: "對不死系魔物的魔傷增加 x%" },
+            { id: "109", name: "對動物系魔物的魔傷增加 x%" },
+            { id: "110", name: "對植物系魔物的魔傷增加 x%" },
+            { id: "111", name: "對昆蟲系魔物的魔傷增加 x%" },
+            { id: "112", name: "對魚貝系魔物的魔傷增加 x%" },
+            { id: "113", name: "對惡魔系魔物的魔傷增加 x%" },
+            { id: "114", name: "對人類型魔物(非PC)的魔傷增加 x%" },
+            { id: "115", name: "對天使系魔物的魔傷增加 x%" },
+            { id: "116", name: "對龍族系魔物的魔傷增加 x%" },
+            { id: "117", name: "對無型系魔物的 CRI + x" },
+            { id: "118", name: "對不死系魔物的 CRI + x" },
+            { id: "119", name: "對動物系魔物的 CRI + x" },
+            { id: "120", name: "對植物系魔物的 CRI + x" },
+            { id: "121", name: "對昆蟲系魔物的 CRI + x" },
+            { id: "122", name: "對魚貝系魔物的 CRI + x" },
+            { id: "123", name: "對惡魔系魔物的 CRI + x" },
+            { id: "124", name: "對人類系魔物(不包含玩家系)的 CRI + x" },
+            { id: "125", name: "對天使系魔物的 CRI + x" },
+            { id: "126", name: "對龍族系魔物的 CRI + x" },
+            { id: "127", name: "對無型魔物的物防忽視 x%" },
+            { id: "128", name: "不死系魔物的物防忽視 x%" },
+            { id: "129", name: "動物系魔物的物防忽視 x%" },
+            { id: "130", name: "ADDEXPPERCENT_KILLRACE_UNDEAD" },
+            { id: "130", name: "植物系魔物的物防忽視 x%" },
+            { id: "131", name: "昆蟲系魔物的物防忽視 x%" },
+            { id: "132", name: "魚貝系魔物的物防忽視 x%" },
+            { id: "133", name: "惡魔系魔物的物防忽視 x%" },
+            { id: "134", name: "人類系魔物(非PC)的物防忽視 x%" },
+            { id: "135", name: "天使系魔物的物防忽視 x%" },
+            { id: "136", name: "龍族系魔物的物防忽視 x%" },
+            { id: "137", name: "無型系魔物魔防忽視 x%" },
+            { id: "138", name: "不死系魔物魔防忽視 x%" },
+            { id: "139", name: "動物系魔物魔防忽視 x%" },
+            { id: "140", name: "植物系魔物魔防忽視 x%" },
+            { id: "141", name: "昆蟲系魔物魔防忽視 x%" },
+            { id: "142", name: "魚貝系魔物魔防忽視 x%" },
+            { id: "143", name: "惡魔系魔物魔防忽視 x%" },
+            { id: "144", name: "人類系魔物(非PC)魔防忽視 x%" },
+            { id: "145", name: "天使系魔物魔防忽視 x%" },
+            { id: "146", name: "龍族系魔物魔防忽視 x%" },
+            { id: "147", name: "對一般魔物的物傷增加 x%" },
+            { id: "148", name: "對首領類魔物的物傷增加 x%" },
+            { id: "149", name: "對一般魔物受到物傷減少 x%" },
+            { id: "150", name: "對首領類魔物受到物傷減少 x%" },
+            { id: "151", name: "對一般魔物的魔傷增加 x% " },
+            { id: "152", name: "對首領類魔物的魔傷增加 x%" },
+            { id: "153", name: "一般怪的物防忽視 x%" },
+            { id: "154", name: "首領類怪的物防忽視 x%" },
+            { id: "155", name: "一般怪魔防忽視 x%" },
+            { id: "156", name: "首領類怪魔防忽視 x%" },
+            { id: "157", name: "對小型魔物的物傷增加 x%" },
+            { id: "158", name: "對中型魔物的物傷增加 x%" },
+            { id: "159", name: "對大型魔物的物傷增加 x%" },
+            { id: "160", name: "對小型魔物受到的物傷減少 x%" },
+            { id: "161", name: "對中型魔物受到的物傷減少 x%" },
+            { id: "162", name: "對大型魔物受到的物傷減少 x%" },
+            { id: "163", name: "刪除對武器大小的懲罰" },
+            { id: "164", name: "暴擊傷害增加x%" },
+            { id: "165", name: "受到的暴擊傷害減少 x%" },
+            { id: "166", name: "遠距離攻擊增加 x%" },
+            { id: "167", name: "受到遠傷時減少 x%" },
+            { id: "168", name: "恢復量增加 x%" },
+            { id: "169", name: "承受的治癒量增加 x%" },
+            { id: "170", name: "變動施法時間減少 x%" },
+            { id: "171", name: "技能的後延遲減少 x%" },
+            { id: "172", name: "使用技能時SP消耗量減少 x%" },
+            { id: "175", name: "對武器賦予無屬性" },
+            { id: "176", name: "對武器賦予水屬性" },
+            { id: "177", name: "對武器賦予地屬性" },
+            { id: "178", name: "對武器賦予火屬性" },
+            { id: "179", name: "對武器賦予風屬性" },
+            { id: "180", name: "對武器賦予毒屬性" },
+            { id: "181", name: "對武器賦予聖屬性" },
+            { id: "182", name: "對武器賦予暗屬性" },
+            { id: "183", name: "對武器賦予念屬性" },
+            { id: "184", name: "對武器賦予不死屬性" },
+            { id: "185", name: "武器不可破壞" },
+            { id: "186", name: "鎧甲不可破壞" },
+            { id: "187", name: "對小型魔物的魔傷增加x%" },
+            { id: "188", name: "對中型魔物的魔傷增加x%" },
+            { id: "189", name: "對大型魔物的魔傷增加x%" },
+            { id: "190", name: "遭受小型怪的魔法傷害 -x%" },
+            { id: "191", name: "遭受中型怪的魔法傷害 -x%" },
+            { id: "192", name: "遭受大型怪的魔法傷害 -x%" },
+            { id: "193", name: "對所有屬性攻擊的抗性 + x" },
+            { id: "194", name: "對無型怪的抗性+ x%" },
+            { id: "195", name: "對不死型怪的抗性+ x%" },
+            { id: "196", name: "對動物型怪的抗性+ x%" },
+            { id: "197", name: "對植物型怪的抗性+ x%" },
+            { id: "198", name: "對昆蟲型怪的抗性+ x%" },
+            { id: "199", name: "對魚貝型怪的抗性+ x%" },
+            { id: "200", name: "對惡魔型怪的抗性+ x%" },
+            { id: "201", name: "對人類型怪的抗性+ x%" },
+            { id: "202", name: "對天使型怪的抗性+ x%" },
+            { id: "203", name: "對龍族怪的抗性+ x" },
+            { id: "204", name: "遠距離物理傷害+ x" },
+            { id: "205", name: "x%" },
+            { id: "206", name: "對玩家的抗性+ x%" },
+            { id: "207", name: "對喵族的抗性+ x%" },
+            { id: "208", name: "對玩家的物理傷害+ x%" },
+            { id: "209", name: "對喵族的物理傷害+ x%" },
+            { id: "210", name: "對玩家的魔法傷害+ x%" },
+            { id: "211", name: "對喵族的魔法傷害+ x%" },
+            { id: "212", name: "對玩家的CRI+ x%" },
+            { id: "213", name: "對喵族的CRI+ x" },
+            { id: "214", name: "無視玩家的物防x%" },
+            { id: "215", name: "無視喵族的物防x%" },
+            { id: "216", name: "無視玩家的魔防x%" },
+            { id: "217", name: "無視喵族的魔防x%" },
+            { id: "218", name: "x%" },
+            { id: "219", name: "近距離物理傷害+ x" },
+            { id: "220", name: "x%" },
+            { id: "221", name: "無屬性魔法傷害增加x%" },
+            { id: "222", name: "水屬性魔法傷害增加x%" },
+            { id: "223", name: "地屬性魔法傷害增加x%" },
+            { id: "224", name: "火屬性魔法傷害增加x%" },
+            { id: "225", name: "風屬性魔法傷害增加x%" },
+            { id: "226", name: "毒屬性魔法傷害增加x%" },
+            { id: "227", name: "聖屬性魔法傷害增加x%" },
+            { id: "228", name: "暗屬性魔法傷害增加x%" },
+            { id: "229", name: "念屬性魔法傷害增加x%" },
+            { id: "230", name: "不死屬性魔法傷害增加x%" },
+            { id: "231", name: "全屬性魔法傷害+ x" },
+            { id: "232", name: "擊殺無型魔物經驗值+ x" },
+            { id: "233", name: "擊殺不死型魔物經驗值+ x" },
+            { id: "234", name: "擊殺動物型魔物經驗值+ x" },
+            { id: "235", name: "擊殺植物型魔物經驗值+ x" },
+            { id: "236", name: "擊殺昆蟲型魔物經驗值+ x" },
+            { id: "237", name: "擊殺魚貝型魔物經驗值+ x" },
+            { id: "238", name: "擊殺惡魔型魔物經驗值+ x" },
+            { id: "239", name: "擊殺人類型魔物經驗值+ x" },
+            { id: "240", name: "擊殺天使型魔物經驗值+ x" },
+            { id: "241", name: "擊殺龍族魔物經驗值+ x" },
+            { id: "242", name: "擊殺魔物經驗值+ x" },
+            { id: "243", name: "POW + x" },
+            { id: "244", name: "SPL + x" },
+            { id: "245", name: "STA + x" },
+            { id: "246", name: "WIS + x" },
+            { id: "247", name: "CON + x" },
+            { id: "248", name: "CRT + x" },
+            { id: "249", name: "P.ATK + x" },
+            { id: "250", name: "S.MATK + x" },
+            { id: "251", name: "RES + x" },
+            { id: "252", name: "MRES + x" },
+            { id: "253", name: "H.PLUS + x" },
+            { id: "254", name: "C.RATE + x" },
+            { id: "255", name: "大型蛋黃波利卡片" },
+            { id: "256", name: "獸人英雄卡片" },
+            { id: "257", name: "蟻後卡片" },
+            { id: "258", name: "獸人酋長卡片" },
+            { id: "259", name: "黃金蟲卡片" },
+            { id: "260", name: "虎王卡片" },
+            { id: "261", name: "俄塞裡斯卡片" },
+            { id: "262", name: "古埃及王卡片" },
+            { id: "263", name: "皮裡恩卡片" },
+            { id: "264", name: "德古拉伯爵卡片" },
+            { id: "265", name: "死靈卡片" },
+            { id: "266", name: "蜂后卡片" },
+            { id: "267", name: "月夜貓卡片" },
+            { id: "268", name: "嗒妮小姐卡片" },
+            { id: "269", name: "巴風特卡片" },
+            { id: "270", name: "法老王卡片" },
+            { id: "271", name: "骷鼴疏勿]卡片" },
+            { id: "272", name: "海盜之王卡片" },
+            { id: "273", name: "冰暴騎士卡片" },
+            { id: "274", name: "波伊塔塔卡片" },
+            { id: "275", name: "死靈騎士卡片" },
+            { id: "276", name: "讓特卡片" },
+            { id: "277", name: "章魚大王卡片" },
+            { id: "278", name: "黑暗之王卡片" },
+            { id: "279", name: "白素貞卡片" },
+            { id: "280", name: "青冠龍卡片" },
+            { id: "281", name: "卡崙卡片" },
+            { id: "282", name: "水晶龍卡片" },
+            { id: "283", name: "魔劍士 達納托斯的記憶卡片" },
+            { id: "284", name: "夜勝魔卡片" },
+            { id: "285", name: "元靈武士卡片" },
+            { id: "286", name: "0806卡片" },
+            { id: "287", name: "黑暗腔棘魚卡片" },
+            { id: "288", name: "古怪腔棘魚卡片" },
+            { id: "289", name: "亡者君主卡片" },
+            { id: "290", name: "夢羅克的行妖術者卡片" },
+            { id: "291", name: "無限虎王卡片" },
+            { id: "292", name: "無限俄塞裡斯卡片" },
+            { id: "293", name: "墨蛇君卡片" },
+            { id: "294", name: "無限皮裡恩卡片" },
+            { id: "295", name: "無限獸人英雄卡片" },
+            { id: "296", name: "無限塔奧群卡卡片" },
+            { id: "297", name: "烏龜將軍卡片" },
+            { id: "298", name: "塔奧群卡卡片" },
+            { id: "299", name: "邪心獵人 伊芙卡片" },
+            { id: "300", name: "劇毒凱美拉卡片" },
+            { id: "301", name: "施密特國王卡片" },
+            { id: "302", name: "阿特羅斯卡片" },
+            { id: "303", name: "畢尤卡片" },
+            { id: "304", name: "米古爾卡片" },
+            { id: "305", name: "憤怒月夜貓卡片" },
+            { id: "306", name: "A17T卡片" },
+            { id: "307", name: "小可愛卡片" },
+            { id: "308", name: "魔鬼大烏賊卡片" },
+            { id: "309", name: "01卡片" },
+            { id: "310", name: "貝思波卡片" },
+            { id: "311", name: "船長裴陸卡片" },
+            { id: "312", name: "迪塔勒泰晤勒斯卡片" },
+            { id: "313", name: "甦醒水晶龍卡片" },
+            { id: "314", name: "紅椒卡片" },
+            { id: "315", name: "墮落大神官卡片" },
+            { id: "316", name: "大王喵喵卡片" },
+            { id: "317", name: "幽暗夢魘卡片" },
+            { id: "318", name: "憤怒德古拉伯爵卡片" },
+            { id: "319", name: "斯威蒂卡片" },
+            { id: "320", name: "女王甲蟲卡片" },
+            { id: "321", name: "黃金女王甲蟲卡片" },
+            { id: "322", name: "覺醒貝爾卡片" },
+            { id: "323", name: "闇●劍士 賽尼亞卡片" },
+            { id: "324", name: "巴基力 蘭特克力斯卡片" },
+            { id: "325", name: "淘汰者傅立葉卡片" },
+            { id: "326", name: "將軍大賢卡片" },
+            { id: "327", name: "亡靈的守護者卡德斯卡片" },
+            { id: "328", name: "滅絕古埃及王卡片" },
+            { id: "329", name: "查理斯頓卡片" },
+            { id: "330", name: "席瓦帕皮利亞卡片" },
+            { id: "331", name: "伊夫利特卡片" },
+            { id: "332", name: "喬伊亞卡片" },
+            { id: "333", name: "貝雷傑卡片" },
+            { id: "334", name: "墮落根莖卡片" },
+            { id: "335", name: "闇答萊屍卡片" },
+            { id: "336", name: "寶箱巨鱷卡片" },
+            { id: "337", name: "魔神追隨者卡片" },
+            { id: "338", name: "變種腔棘魚卡片" },
+            { id: "339", name: "暴力腔棘魚卡片" },
+            { id: "340", name: "驚駭森靈皇后卡片" },
+            { id: "341", name: "蜘蛛戰車卡片" },
+            { id: "342", name: "死神安庫卡片" },
+            { id: "343", name: "闇●騎士領主 賽依連卡片" },
+            { id: "344", name: "闇●十字刺客 艾勒梅斯卡片" },
+            { id: "345", name: "闇●神工匠 哈沃得卡片" },
+            { id: "346", name: "闇●神官 瑪嘉雷特卡片" },
+            { id: "347", name: "闇●神射手 迪文卡片" },
+            { id: "348", name: "闇●超魔導師 凱特莉娜卡片" },
+            { id: "349", name: "闇●聖殿十字軍 蘭達卡片" },
+            { id: "350", name: "闇●創造者 普拉梅姆卡片" },
+            { id: "351", name: "闇●智者 西裡亞卡片" },
+            { id: "352", name: "闇●武術宗師 陳理歐卡片" },
+            { id: "353", name: "闇●神行太保 科迪卡片" },
+            { id: "354", name: "闇●搞笑藝人 雅歐帕奇爾卡片" },
+            { id: "355", name: "闇●冷豔舞姬 特蘭提尼卡片" },
+            { id: "356", name: "潘利爾符咒卡片" },
+            { id: "357", name: "弱化的潘利爾卡片" },
+            { id: "358", name: "潘利爾卡片" },
+            { id: "359", name: "席琳基米卡片" },
+            { id: "360", name: "莎拉卡片" },
+            { id: "361", name: "歐內斯特 斯特凡˙傑克卡片" },
+            { id: "362", name: "光芒泰迪熊卡片" },
+            { id: "363", name: "T W O卡片" },
+            { id: "364", name: "不祥烏龜將軍卡片" },
+            { id: "365", name: "古代塔奧群卡卡片" },
+            { id: "366", name: "古代伍坦防禦者卡片" },
+            { id: "367", name: "時間支配者卡片" },
+            { id: "368", name: "R48" },
+            { id: "369", name: "絕望之神夢羅克卡片" },
+            { id: "370", name: "寡言的蟻後卡片" },
+            { id: "371", name: "混沌巴風特卡片" },
+            { id: "372", name: "覺醒闇答萊屍卡片" },
+            { id: "373", name: "覺醒墮落根莖卡片" },
+            { id: "374", name: "活體劍士卡片" },
+            { id: "375", name: "夢魘紅椒卡片" },
+            { id: "376", name: "舒朗卡片" },
+            { id: "377", name: "扭曲之神卡片" },
+            { id: "378", name: "闇●基因學者 普拉梅姆卡片" },
+            { id: "379", name: "闇●宮廷樂師 雅歐帕奇爾卡片" },
+            { id: "380", name: "闇●浪姬舞者 特蘭提尼卡片" },
+            { id: "381", name: "闇●大主教 瑪嘉雷特卡片" },
+            { id: "382", name: "闇●機械工匠 哈沃得卡片" },
+            { id: "383", name: "闇●咒術士 凱特莉娜卡片" },
+            { id: "384", name: "闇●皇家禁衛隊 蘭達卡片" },
+            { id: "385", name: "闇●妖術師 西裡亞卡片" },
+            { id: "386", name: "闇●修羅 陳理歐卡片" },
+            { id: "387", name: "闇●魅影追蹤者 科迪卡片" },
+            { id: "388", name: "堅硬穆希貝斯寇卡片" },
+            { id: "389", name: "闇●十字斬首者  艾勒梅斯卡片" },
+            { id: "390", name: "闇●遊俠 迪文卡片" },
+            { id: "391", name: "闇●盧恩騎士 賽依連卡片" },
+            { id: "392", name: "闇答萊屍幻影卡片" },
+            { id: "393", name: "汙染黑暗之王卡片" },
+            { id: "394", name: "汙染蜘蛛女王卡片" },
+            { id: "395", name: "希梅爾茲幻影卡片" },
+            { id: "396", name: "格蘭帕皮利亞卡片" },
+            { id: "397", name: "珠寶溫古力安特卡片" },
+            { id: "398", name: "深海魔鬼大烏賊卡片" },
+            { id: "399", name: "深海魔女卡片" },
+            { id: "400", name: "雷吉麗芙卡片" },
+            { id: "401", name: "英格麗卡片" },
+            { id: "402", name: "骷躑}塔勒泰晤勒斯卡片" },
+            { id: "403", name: "破壞的達納托斯的記憶卡片" },
+            { id: "404", name: "阿奎拉卡片" },
+            { id: "405", name: "火焰狼牙卡片" },
+            { id: "406", name: "R001" },
+            { id: "407", name: "仿真蓉可兒卡片" },
+            { id: "408", name: "不明生物卡片" },
+            { id: "409", name: "薩克萊卡片" },
+            { id: "410", name: "提亞拉卡片" },
+            { id: "411", name: "變異救世主凱美拉卡片" },
+            { id: "412", name: "終極青翅巨鳥卡片" },
+            { id: "413", name: "國王哥布靈卡片" },
+            { id: "414", name: "死亡女巫卡片" },
+            { id: "415", name: "豪h蜴卡片" },
+            { id: "416", name: "雷涅爾卡片" },
+            { id: "417", name: "移動速度增加 x%" },
+            { id: "418", name: "被物傷時減少 x" },
+            { id: "419", name: "被魔法攻擊時減少 x" },
+            { id: "420", name: "魔法傷害提升 x%" },
+            { id: "421", name: "普攻時傷害增加 x%" },
+            { id: "422", name: "技能冷卻時間減少 x%" },
+            { id: "423", name: "固定詠唱時間減少 x%" },
+            { id: "424", name: "物理傷害加深 x%" },
+            { id: "425", name: "魔法傷害加深 x%" },
+            { id: "426", name: "魔法傷害提升 x%" },
+            { id: "427", name: "螺旋擊刺施放時有x%機率再次施放" },
+            { id: "428", name: "百矛穿刺施放時有x%機率再次施放" },
+            { id: "429", name: "龍之氣息施放時有x%機率再次施放" },
+            { id: "430", name: "龍之氣息水施放時有x%機率再次施放" },
+            { id: "431", name: "致命爆裂施放時有x%機率再次施放" },
+            { id: "432", name: "橫揮斬施放時有x%機率再次施放" },
+            { id: "433", name: "天龍氣息施放時有x%機率再次施放" },
+            { id: "434", name: "風暴斬擊施放時有x%機率再次施放" },
+            { id: "435", name: "狂暴粉碎施放時有x%機率再次施放" },
+            { id: "436", name: "天龍光環施放時有x%機率再次施放" },
+            { id: "437", name: "戰斧踏滅施放時有x%機率再次施放" },
+            { id: "438", name: "強力粉碎施放時有x%機率再次施放" },
+            { id: "439", name: "衝擊撼動施放時有x%機率再次施放" },
+            { id: "440", name: "閃光衝擊波施放時有x%機率再次施放" },
+            { id: "441", name: "三重雷射施放時有x%機率再次施放" },
+            { id: "442", name: "永恆斬擊施放時有x%機率再次施放" },
+            { id: "443", name: "暗影刺擊施放時有x%機率再次施放" },
+            { id: "444", name: "野蠻衝擊施放時有x%機率再次施放" },
+            { id: "445", name: "神力撞擊施放時有x%機率再次施放" },
+            { id: "446", name: "致命影爪施放時有x%機率再次施放" },
+            { id: "447", name: "致命爪痕施放時有x%機率再次施放" },
+            { id: "448", name: "心靈震波施放時有x%機率再次施放" },
+            { id: "449", name: "毀滅慧星施放時有x%機率再次施放" },
+            { id: "450", name: "靈魂連擊施放時有x%機率再次施放" },
+            { id: "451", name: "神秘幻滅施放時有x%機率再次施放" },
+            { id: "452", name: "致命放射施放時有x%機率再次施放" },
+            { id: "453", name: "星際突襲施放時有x%機率再次施放" },
+            { id: "454", name: "焰火之徑施放時有x%機率再次施放" },
+            { id: "455", name: "豔紅魔矢施放時有x%機率再次施放" },
+            { id: "456", name: "萬紫千紅施放時有x%機率再次施放" },
+            { id: "457", name: "冰刃斬施放時有x%機率再次施放" },
+            { id: "458", name: "冰晶飛瀑施放時有x%機率再次施放" },
+            { id: "459", name: "龍捲風暴施放時有x%機率再次施放" },
+            { id: "460", name: "暴風加農砲施放時有x%機率再次施放" },
+            { id: "461", name: "毀滅颶風施放時有x%機率再次施放" },
+            { id: "462", name: "地層震動施放時有x%機率再次施放" },
+            { id: "463", name: "巨石降臨施放時有x%機率再次施放" },
+            { id: "464", name: "震裂術施放時有x%機率再次施放" },
+            { id: "465", name: "聖光打擊施放時有x%機率再次施放" },
+            { id: "466", name: "破壞擊施放時有x%機率再次施放" },
+            { id: "467", name: "聖靈鎮魂施放時有x%機率再次施放" },
+            { id: "468", name: "制裁謳歌施放時有x%機率再次施放" },
+            { id: "469", name: "驅魔風暴施放時有x%機率再次施放" },
+            { id: "470", name: "漸進狙擊施放時有x%機率再次施放" },
+            { id: "471", name: "毀滅風暴施放時有x%機率再次施放" },
+            { id: "472", name: "獵鷹奇襲施放時有x%機率再次施放" },
+            { id: "473", name: "獵鷹狙擊施放時有x%機率再次施放" },
+            { id: "474", name: "創世之光施放時有x%機率再次施放" },
+            { id: "475", name: "瞬間斬擊施放時有x%機率再次施放" },
+            { id: "476", name: "末日審判施放時有x%機率再次施放" },
+            { id: "477", name: "盾牌投擲施放時有x%機率再次施放" },
+            { id: "478", name: "聖十字雨施放時有x%機率再次施放" },
+            { id: "479", name: "交錯審判施放時有x%機率再次施放" },
+            { id: "480", name: "強酸禁地(水)施放時有x%機率再次施放" },
+            { id: "481", name: "強酸禁地(地)施放時有x%機率再次施放" },
+            { id: "482", name: "強酸禁地(風)施放時有x%機率再次施放" },
+            { id: "483", name: "強酸禁地(火)施放時有x%機率再次施放" },
+            { id: "484", name: "混亂的荊棘施放時有x%機率再次施放" },
+            { id: "485", name: "手推車加農砲施放時有x%機率再次施放" },
+            { id: "486", name: "不幸衝擊施放時有x%機率再次施放" },
+            { id: "487", name: "深淵匕首施放時有x%機率再次施放" },
+            { id: "488", name: "連鎖射擊施放時有x%機率再次施放" },
+            { id: "489", name: "狂暴射擊施放時有x%機率再次施放" },
+            { id: "490", name: "深淵墳場施放時有x%機率再次施放" },
+            { id: "491", name: "終結深淵攻擊施放時有x%機率再次施放" },
+            { id: "492", name: "鑽石風暴施放時有x%機率再次施放" },
+            { id: "493", name: "灼熱岩漿施放時有x%機率再次施放" },
+            { id: "494", name: "大地驅動施放時有x%機率再次施放" },
+            { id: "495", name: "雷霆陣地施放時有x%機率再次施放" },
+            { id: "496", name: "毒液沼澤施放時有x%機率再次施放" },
+            { id: "497", name: "元素破壞施放時有x%機率再次施放" },
+            { id: "498", name: "第一擊:烙印施放時有x%機率再次施放" },
+            { id: "499", name: "第二擊:信念施放時有x%機率再次施放" },
+            { id: "500", name: "第三擊:懲治施放時有x%機率再次施放" },
+            { id: "501", name: "聖油洗禮施放時有x%機率再次施放" },
+            { id: "502", name: "爆破衝擊施放時有x%機率再次施放" },
+            { id: "503", name: "第二擊:審判施放時有x%機率再次施放" },
+            { id: "504", name: "第二擊:火焰滅絕施放時有x%機率再次施放" },
+            { id: "505", name: "焰魔散彈施放時有x%機率再次施放" },
+            { id: "506", name: "第三擊:淨化施放時有x%機率再次施放" },
+            { id: "507", name: "第三擊:火焰彈施放時有x%機率再次施放" },
+            { id: "508", name: "虎砲施放時有x%機率再次施放" },
+            { id: "509", name: "混聲烙印施放時有x%機率再次施放" },
+            { id: "510", name: "金屬狂怒施放時有x%機率再次施放" },
+            { id: "511", name: "玫瑰箭矢施放時有x%機率再次施放" },
+            { id: "512", name: "節奏射擊施放時有x%機率再次施放" },
+            { id: "513", name: "天地一陽施放時有x%機率再次施放" },
+            { id: "514", name: "天晨一陽施放時有x%機率再次施放" },
+            { id: "515", name: "天陽施放時有x%機率再次施放" },
+            { id: "516", name: "天羅萬象施放時有x%機率再次施放" },
+            { id: "517", name: "天地一月施放時有x%機率再次施放" },
+            { id: "518", name: "天晨一月施放時有x%機率再次施放" },
+            { id: "519", name: "天月施放時有x%機率再次施放" },
+            { id: "520", name: "天地萬星施放時有x%機率再次施放" },
+            { id: "521", name: "天命落星施放時有x%機率再次施放" },
+            { id: "522", name: "天星施放時有x%機率再次施放" },
+            { id: "523", name: "死靈淨化施放時有x%機率再次施放" },
+            { id: "524", name: "青龍符施放時有x%機率再次施放" },
+            { id: "525", name: "竊魂平安符施放時有x%機率再次施放" },
+            { id: "526", name: "白虎符施放時有x%機率再次施放" },
+            { id: "527", name: "朱雀符施放時有x%機率再次施放" },
+            { id: "528", name: "四方神符施放時有x%機率再次施放" },
+            { id: "529", name: "四方五行陣施放時有x%機率再次施放" },
+            { id: "530", name: "玄武符施放時有x%機率再次施放" },
+            { id: "531", name: "飛刀扭曲施放時有x%機率再次施放" },
+            { id: "532", name: "風魔掌握施放時有x%機率再次施放" },
+            { id: "533", name: "詭影狩獵施放時有x%機率再次施放" },
+            { id: "534", name: "詭影舞動施放時有x%機率再次施放" },
+            { id: "535", name: "詭影閃光施放時有x%機率再次施放" },
+            { id: "536", name: "詭影惡夢施放時有x%機率再次施放" },
+            { id: "537", name: "飛刀惡夢施放時有x%機率再次施放" },
+            { id: "538", name: "飛刀旋轉施放時有x%機率再次施放" },
+            { id: "539", name: "飛刀曲折施放時有x%機率再次施放" },
+            { id: "540", name: "風魔構築施放時有x%機率再次施放" },
+            { id: "541", name: "火焰砲施放時有x%機率再次施放" },
+            { id: "542", name: "冷焰砲施放時有x%機率再次施放" },
+            { id: "543", name: "雷電砲施放時有x%機率再次施放" },
+            { id: "544", name: "金龍砲施放時有x%機率再次施放" },
+            { id: "545", name: "暗戰砲施放時有x%機率再次施放" },
+            { id: "546", name: "暗影龍噩夢施放時有x%機率再次施放" },
+            { id: "547", name: "夜裡的警惕施放時有x%機率再次施放" },
+            { id: "548", name: "獨一槍彈施放時有x%機率再次施放" },
+            { id: "549", name: "螺旋射擊施放時有x%機率再次施放" },
+            { id: "550", name: "梅格競直擊施放時有x%機率再次施放" },
+            { id: "551", name: "曠野之火施放時有x%機率再次施放" },
+            { id: "552", name: "初階手榴彈施放時有x%機率再次施放" },
+            { id: "553", name: "洞中急火施放時有x%機率再次施放" },
+            { id: "554", name: "落空手榴彈施放時有x%機率再次施放" },
+            { id: "555", name: "任務轟炸機施放時有x%機率再次施放" },
+            { id: "556", name: "雙重怪物互擊施放時有x%機率再次施放" },
+            { id: "557", name: "巨型音速投擲施放時有x%機率再次施放" },
+            { id: "558", name: "連續盾撞衝擊施放時有x%機率再次施放" },
+            { id: "559", name: "螺旋擊刺Max施放時有x%機率再次施放" },
+            { id: "560", name: "隕石術猛擊施放時有x%機率再次施放" },
+            { id: "561", name: "地面重力施放時有x%機率再次施放" },
+            { id: "562", name: "雷鳴術風暴施放時有x%機率再次施放" },
+            { id: "563", name: "念力連擊攻擊施放時有x%機率再次施放" },
+            { id: "564", name: "新霜凍術施放時有x%機率再次施放" },
+            { id: "565", name: "地獄毀滅施放時有x%機率再次施放" },
+            { id: "566", name: "鐵虎空心爪施放時有x%機率再次施放" },
+            { id: "567", name: "鐵虎咆嘯施放時有x%機率再次施放" },
+            { id: "568", name: "虎高空亂打施放時有x%機率再次施放" },
+            { id: "569", name: "玄鹿葉風施放時有x%機率再次施放" },
+            { id: "570", name: "玄鹿砲施放時有x%機率再次施放" },
+            { id: "571", name: "光芒之矛施放時有x%機率再次施放" },
+            { id: "572", name: "帝國十字施放時有x%機率再次施放" },
+            { id: "573", name: "急速撞擊施放時有x%機率再次施放" },
+            { id: "574", name: "強力揮擊施放時有x%機率再次施放" },
+            { id: "575", name: "能量加農砲施放時有x%機率再次施放" },
+            { id: "576", name: "神秘粉末施放時有x%機率再次施放" },
+            { id: "577", name: "粉塵爆炸施放時有x%機率再次施放" },
+            { id: "578", name: "十字斬擊施放時有x%機率再次施放" },
+            { id: "579", name: "打擊滑步施放時有x%機率再次施放" },
+            { id: "580", name: "追跡突擊施放時有x%機率再次施放" },
+            { id: "581", name: "追跡射擊施放時有x%機率再次施放" },
+            { id: "582", name: "節奏搖竅I放時有x%機率再次施放" },
+            { id: "583", name: "狂野射擊施放時有x%機率再次施放" },
+            { id: "584", name: "午夜降臨施放時有x%機率再次施放" },
+            { id: "585", name: "普攻時有70%%機率打擊次數+x" }
+        ];
+    </script>
+</body>
+</html>
