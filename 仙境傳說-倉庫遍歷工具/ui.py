@@ -27,6 +27,7 @@ class WinGUI(Tk):
         self.tk_button_m2xggfy1 = self.__tk_button_m2xggfy1( self.tk_label_frame_m2w37dcv)
         self.tk_table_m2w3rgpm = self.__tk_table_m2w3rgpm(self)
         self.tk_button_m2w6ba1e = self.__tk_button_m2w6ba1e(self)
+        self.tk_button_m212ba1e = self.__tk_button_m212ba1e(self)
         self.tk_selection_box = self.__tk_selection_box( self) 
     def __win(self):
         self.title("裝備管理工具")
@@ -78,21 +79,30 @@ class WinGUI(Tk):
         label.place(x=0, y=0, width=100, height=30)
         return label
     def __tk_select_box_m2w2v0f5(self,parent):
-        type_var = StringVar(value="個人")
-        type_options = ["","倉庫", "個人"]
+        if self.ctl.check_machine :
+            type_var = StringVar(value="個人")
+            type_options = ["","倉庫", "露天", "個人"]
+        else:
+            type_var = StringVar(value="倉庫")
+            type_options = ["","倉庫"]
         type_menu = OptionMenu(parent, type_var, *type_options)
         # cb = Combobox(parent, state="readonly", )
         # cb['values'] = ("個人","倉庫")
         type_menu.place(x=100, y=2, width=80, height=30)
         return type_var
     def __tk_button_m2w31jpw(self,parent):
-        btn = Button(parent, text="遍歷個人", takefocus=False,)
+        if self.ctl.check_machine :
+            btn = Button(parent, text="遍歷個人", takefocus=False,)
+        else:
+            btn = Button(parent, text="遍歷倉庫", takefocus=False,)
         btn.place(x=195, y=0, width=70, height=30)
         return btn
     def __tk_check_button_m2xrfg5x(self,parent):
         self.tk_check_button_m2xrfg6x = IntVar(value=0)
-        cb = Checkbutton(parent,text="定時掃描(5s)",variable=self.tk_check_button_m2xrfg6x)
+        cb = Checkbutton(parent,text="定時掃描(1s)",variable=self.tk_check_button_m2xrfg6x)
         cb.place(x=280, y=0, width=90, height=30)
+        if not self.ctl.check_machine :
+            cb.place_forget()
         return cb
     def __tk_button_m2w323m4(self,parent):
         btn = Button(parent, text="輸出data.json", takefocus=False,)
@@ -101,6 +111,8 @@ class WinGUI(Tk):
     def __tk_label_frame_m2w37dcv(self,parent):
         frame = LabelFrame(parent,text="篩選",)
         frame.place(x=0, y=29, relwidth=1.0000, relheight=0.8380)
+        if not self.ctl.check_machine :
+            frame.place_forget()
         return frame
     def __tk_label_m2w39jda(self,parent):
         label = Label(parent,text="請輸入要搜索的ID(用逗號分隔,例如: 145,147,158):",anchor="center", )
@@ -113,12 +125,16 @@ class WinGUI(Tk):
     def __tk_label_m2mfu49l(self,parent):
         label = Label(parent,text="複製類型：",anchor="center", )
         label.place(x=520, y=0, width=100, height=30)
+        if not self.ctl.check_machine :
+            label.place_forget()
         return label
     def __tk_select_box_m2mfv0f5(self,parent):
         type_var = StringVar(value="全部")
         type_options = ["","全部", "ID", "名稱", "詞墜", "卡槽"]
         type_menu = OptionMenu(parent, type_var, *type_options)
         type_menu.place(x=600, y=2, width=80, height=30)
+        if not self.ctl.check_machine :
+            type_menu.place_forget()
         return type_var
     def __tk_label_m2w3d4cd(self,parent):
         label = Label(parent,text="精煉值大於:",anchor="center", )
@@ -150,6 +166,12 @@ class WinGUI(Tk):
         btn = Button(parent, text="窗口重設", takefocus=False,)
         btn.place(x=895, y=0, width=105, height=30)
         return btn
+    def __tk_button_m212ba1e(self,parent):
+        btn = Button(parent, text="修改物品顯示ID", takefocus=False,)
+        btn.place(x=1050, y=0, width=105, height=30)
+        if not self.ctl.check_machine :
+            btn.place_forget()
+        return btn
     def __tk_table_m2w3rgpm(self,parent):
         # 设置样式
         self.style.configure("Custom.Treeview", font=(10))
@@ -158,7 +180,7 @@ class WinGUI(Tk):
         columns = {"排序": 49, "精煉": 49, "ID": 79, "名稱": 149, "詞綴": 999, "卡槽": 399}
         # 创建一个框架来容纳 Treeview 和滚动条
         frame = Frame(parent)
-        frame.place(x=0, y=80, relwidth=1, relheight=1)
+        frame.place(x=0, y=80, relwidth=1, relheight=0.85)
         # 创建 Treeview
         tk_table = Treeview(frame, show="headings", columns=list(columns), style="Custom.Treeview")
         for text, width in columns.items():
@@ -179,6 +201,16 @@ class WinGUI(Tk):
     def __tk_selection_box(self,parent):
         selection_box = Listbox(parent, selectmode=SINGLE)
         selection_box.config(font=("Helvetica", 10))  # 12 为字体大小，可自行调整
+        options = self.ctl.suffixs_lates
+        selection_box.delete(0, END)
+        for option in options:
+            data = self.ctl.suffixs_lates[option]
+            processed_string = data.split("。可強化次數：")[0]
+            # 將 %d 替換為 x，並將 %% 替換為 %
+            processed_string = processed_string.replace("%d", "x").replace("%%", "%")
+            selection_box.insert(END, f'{option}: {processed_string}')
+        # 設置位置
+        selection_box.place(x=285, y=80, width=350, height=300)
         selection_box.place_forget()  # 初始隐藏
         return selection_box
     def only_numeric(self, value):
@@ -201,11 +233,13 @@ class Win(WinGUI):
         self.tk_button_m2w4ykm7.bind('<Button-1>',self.ctl.refresh)
         self.tk_button_m2xggfy1.bind('<Button-1>',self.ctl.equipment)
         self.tk_button_m2w6ba1e.bind('<Button-1>',self.ctl.hwnd_binding)
+        self.tk_button_m212ba1e.bind('<Button-1>',self.ctl.write_iteminfo)
         self.tk_table_m2w3rgpm.bind("<Double-Button-1>", self.ctl.on_double_click)
         self.tk_select_box_m2w2v0f5.trace("w", self.ctl.update_button_text)
         pass
     def __style_config(self):
-        self.title(f'裝備管理工具 目前尋找 {self.ctl.read_string("01572430" )} 的倉庫')
+        star = "授權版" if self.ctl.check_machine else "免費版"
+        self.title(f'裝備管理工具 目前尋找 {self.ctl.read_string("01572430" )} 的倉庫 - {star}')
         pass
 if __name__ == "__main__":
     win = WinGUI()
